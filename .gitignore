@@ -1,0 +1,15 @@
+# Gereksiz sistem dosyaları
+.venv/
+__pycache__/
+.idea/
+
+# Devasa veri klasörleri (Bunları GitHub'a atmıyoruz)
+Dataset/
+Spectrograms/
+
+# Büyük model ve geçici dosyalar
+*.h5
+*.npy
+*.pkl
+temp.png
+temp_test.png
