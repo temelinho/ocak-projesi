@@ -25,7 +25,7 @@ def create_spectrogram(audio_file, image_file):
 base_audio = './Dataset'
 base_spectro = './Spectrograms'
 
-for cat in ['kaynama', 'gurultu']:
+for cat in ['kaynama', 'gurultu', 'pisme']:
     audio_path = os.path.join(base_audio, cat)
     dest_path = os.path.join(base_spectro, cat)
     os.makedirs(dest_path, exist_ok=True)
