@@ -49,8 +49,9 @@ model.summary()
 print("\n🚀 Eğitim başlıyor...")
 history = model.fit(train_gen, epochs=20, validation_data=val_gen)
 
-model.save('ocak_siniflandirici.h5')
-print("\n📦 Model 'ocak_siniflandirici.h5' olarak kaydedildi!")
+# --- DÜZELTİLEN KISIM ---
+model.save('ocak_siniflandirici.keras')
+print("\n📦 Model 'ocak_siniflandirici.keras' olarak kaydedildi!")
 
 # Eğitim sonuçlarını göster
 print(f"\n📊 Son Epoch Sonuçları:")
