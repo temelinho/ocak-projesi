@@ -1,0 +1,14 @@
+# Gereksiz sistem dosyaları
+.venv/
+__pycache__/
+.idea/
+
+
+Spectrograms/
+
+# Büyük model ve geçici dosyalar
+*.h5
+*.npy
+*.pkl
+temp.png
+temp_test.png

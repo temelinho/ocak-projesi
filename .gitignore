@@ -1,14 +1,26 @@
-# Gereksiz sistem dosyaları
-.venv/
-__pycache__/
-.idea/
+# Python
+**/__pycache__/
+**/.venv/
+**/.idea/
+**/.vscode/
+**/*.h5
+**/*.npy
+**/*.pkl
+**/temp.png
+**/temp_test.png
 
+# Node / React
+**/node_modules/
+**/dist/
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
 
-Spectrograms/
+# Project Specific
+**/Spectrograms/
 
-# Büyük model ve geçici dosyalar
-*.h5
-*.npy
-*.pkl
-temp.png
-temp_test.png
+# System Files
+.DS_Store
+Thumbs.db

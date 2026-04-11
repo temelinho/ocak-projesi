@@ -77,13 +77,13 @@ def test_single_audio(file_path):
 if __name__ == '__main__':
     # Test etmek istediğin dosyaları buraya ekle
     test_files = [
-        'Dataset/test.wav',
-        'Dataset/test2.wav',
-        'Dataset/test3.wav',
-        'Dataset/test4.wav',
-        'Dataset/son.wav',
+        'C:/Users/Fey/Downloads/1.wav',
+        'C:/Users/Fey/Downloads/2.wav',
+        'C:/Users/Fey/Downloads/3.wav',
+        'C:/Users/Fey/Downloads/4.wav',
+        'C:/Users/Fey/Downloads/5.wav',
         # İstersen yeni pişme seslerini de ekleyebilirsin:
-        'Dataset/pisme/ASMR_-_Frying_Food_Sizzling_Sounds_no_talking_part9.wav'
+
     ]
 
     print("\n" + "=" * 40)
