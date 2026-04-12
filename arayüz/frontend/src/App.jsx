@@ -162,7 +162,7 @@ export default function App() {
       }
     } catch (err) {
       if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-        setError('Sunucuya bağlanılamadı. Backend çalışıyor mu? (python server.py)')
+        setError('Sunucuya bağlanılamadı. Lütfen backend sunucusunun (start_server.bat) çalıştığından emin olun.')
       } else {
         setError(err.message)
       }
