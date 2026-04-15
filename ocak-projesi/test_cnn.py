@@ -6,33 +6,39 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import json
-import sys
+import tempfile
 
-# Terminalde Türkçe karakter sorunu olmaması için
+import sys
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# 1. Yeni formatta modeli yükle
-MODEL_PATH = 'ocak_siniflandirici.keras'
-model = tf.keras.models.load_model(MODEL_PATH)
-
-# 2. Sınıf haritasını yükle
-with open('class_indices.json', 'r', encoding='utf-8') as f:
-    index_to_label = json.load(f)
-
-# Türkçe etiketler ve açıklamalar
+# Türkçe etiketler
 LABEL_MAP = {
-    'gurultu': ('🔇', 'GÜRÜLTÜ', 'Ocakta bir şey pişmiyor.'),
+    'gurultu': ('🔇', 'GÜRÜLTÜ', 'Ocakta bir şey pişmiyor, sadece gürültü.'),
     'kaynama': ('🫧', 'KAYNIYOR', 'Yemek kaynıyor!'),
-    'pisme': ('🍳', 'PİŞİYOR', 'Yemek pişiyor!')
+    'pisme':   ('🍳', 'PİŞİYOR', 'Yemek pişiyor!')
 }
 
+def test_single_audio(file_path, ext_model=None, ext_label_map=None, show_output=True, y=None, sr=None):
+    temp_image = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
 
-def test_single_audio(file_path):
-    temp_image = 'temp_test.png'
+    # Model arguman olarak gelmezse, mevcut dizinden yüklemeyi dene
+    current_model = ext_model
+    current_index_to_label = ext_label_map
 
-    # Sesi Spektrograma Çevir
-    y, sr = librosa.load(file_path, sr=22050)
+    if current_model is None or current_index_to_label is None:
+        if os.path.exists('class_indices.json'):
+            with open('class_indices.json', 'r', encoding='utf-8') as f:
+                current_index_to_label = json.load(f)
+        else:
+            current_index_to_label = {"0": "gurultu", "1": "kaynama", "2": "pisme"}
+            
+        current_model = tf.keras.models.load_model('ocak_siniflandirici.keras')
+
+    # 1. Sesi Spektrograma Çevir (EĞİTİMDEKİYLE AYNI AYARLAR)
+    if y is None or sr is None:
+        y, sr = librosa.load(file_path, sr=22050)
+        
     S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
     S_db = librosa.power_to_db(S, ref=np.max)
 
@@ -42,59 +48,66 @@ def test_single_audio(file_path):
     plt.savefig(temp_image, bbox_inches='tight', pad_inches=0)
     plt.close()
 
-    # Resmi İşle
+    # 2. Resmi Yükle ve İşle
     img = image.load_img(temp_image, target_size=(128, 128))
     img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array /= 255.0
 
-    # Tahmin Yap
-    predictions = model.predict(img_array, verbose=0)[0]
+    # 3. Tahmin Yap (3 sınıf olasılığı)
+    predictions = current_model.predict(img_array, verbose=0)[0]
 
+    # Geçici dosyayı temizle
     if os.path.exists(temp_image):
-        os.remove(temp_image)
+        try:
+            os.remove(temp_image)
+        except Exception:
+            pass
 
-    # Sonuçları Göster
+    # 4. Sonuçları göster
     best_idx = np.argmax(predictions)
-    best_label = index_to_label[str(best_idx)]
+    best_label = current_index_to_label[str(best_idx)]
     emoji, durum, aciklama = LABEL_MAP[best_label]
 
-    print("\n" + "━" * 40)
-    print(f"  {emoji} ANALİZ: {file_path.split('/')[-1]}")
-    print("━" * 40)
+    if show_output:
+        print("\n" + "━" * 36)
+        print(f"  {emoji} OCAK ANALİZ SONUCU")
+        print("━" * 36)
 
-    for i in range(len(predictions)):
-        label = index_to_label[str(i)]
-        label_emoji, label_name, _ = LABEL_MAP[label]
-        bar = "█" * int(predictions[i] * 20)
-        print(f"  {label_emoji} {label_name:8s} : {bar:<20} %{predictions[i] * 100:.1f}")
+        for i in range(len(predictions)):
+            label = current_index_to_label[str(i)]
+            label_emoji, label_name, _ = LABEL_MAP[label]
+            bar_len = int(predictions[i] * 20)
+            bar = "█" * bar_len + "░" * (20 - bar_len)
+            print(f"  {label_emoji} {label_name:8s} : {bar} %{predictions[i]*100:.1f}")
 
-    print("━" * 40)
-    print(f"  ✅ SONUÇ: {aciklama}")
-    print("━" * 40)
+        print("━" * 36)
+
+        if predictions[best_idx] < 0.50:
+            print(f"  ⚠️  Sonuç belirsiz, tekrar deneyin.")
+        else:
+            print(f"  ✅ SONUÇ: {aciklama}")
+
+        print("━" * 36)
+
+    return best_label, predictions
 
 
-# --- TOPLU TEST KISMI ---
+# TEST
 if __name__ == '__main__':
-    # Test etmek istediğin dosyaları buraya ekle
-    test_files = [
-        'C:/Users/Fey/Downloads/1.wav',
-        'C:/Users/Fey/Downloads/2.wav',
-        'C:/Users/Fey/Downloads/3.wav',
-        'C:/Users/Fey/Downloads/4.wav',
-        'C:/Users/Fey/Downloads/5.wav',
-        # İstersen yeni pişme seslerini de ekleyebilirsin:
+    import argparse
+    parser = argparse.ArgumentParser(description="Ocak Ses Test - Tek Ses Dosyası Sınıflandırma")
+    parser.add_argument("audio_path", nargs="?", default="Dataset/test.wav", help="Test edilecek ses dosyası yolu (varsayılan: Dataset/test.wav)")
+    args = parser.parse_args()
+    
+    file_path = args.audio_path
 
-    ]
-
-    print("\n" + "=" * 40)
-    print("  🔬 TOPLU TEST BAŞLIYOR")
+    print("=" * 40)
+    print("  🔬 TEK SES TESTİ BAŞLIYOR")
     print("=" * 40)
 
-    for f in test_files:
-        # Windows/Linux yol uyumu için / ve \ karakterlerini düzeltelim
-        f_path = f.replace('/', os.sep).replace('\\', os.sep)
-
-        if os.path.exists(f_path):
-            test_single_audio(f_path)
-        else:
-            print(f"\n❌ Dosya bulunamadı: {f_path}")
+    if os.path.exists(file_path):
+        print(f"\n📂 Dosya: {file_path}")
+        test_single_audio(file_path)
+    else:
+        print(f"\n❌ Dosya bulunamadı: {file_path}")

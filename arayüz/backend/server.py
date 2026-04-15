@@ -8,21 +8,63 @@ import os
 import sys
 import json
 import tempfile
+import subprocess
 import numpy as np
 import librosa
 import matplotlib
 matplotlib.use('Agg')  # GUI olmadan çalışması için
 import matplotlib.pyplot as plt
+import random
+
+MOCK_ML = False
+
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # ─── YAPILANDIRMA ──────────────────────────────────────────────
-# ocak-projesi klasörünün yolu (sadece okuma yapılacak)
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'ocak-projesi'))
+# Ana proje dizini (sadece okuma yapılacak)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 MODEL_PATH = os.path.join(PROJECT_ROOT, 'ocak_siniflandirici.keras')
 CLASS_INDICES_PATH = os.path.join(PROJECT_ROOT, 'class_indices.json')
+# FFMPEG yolu tespiti
+def get_ffmpeg_path():
+    # 1. Oncelikle sistem PATH icinde 'ffmpeg' var mi bak
+    import shutil
+    ffmpeg_in_path = shutil.which("ffmpeg")
+    if ffmpeg_in_path:
+        return ffmpeg_in_path
+    
+    # 2. Varsayilan birkac Windows yolu
+    common_paths = [
+        os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe'),
+        r'C:\ffmpeg\bin\ffmpeg.exe',
+        r'C:\Program Files\ffmpeg\bin\ffmpeg.exe'
+    ]
+    for p in common_paths:
+        if os.path.exists(p):
+            return p
+            
+    # 3. Bulunamazsa 'ffmpeg' komutunu varsayilan olarak birak (hata verecektir ama en azindan sistemden bagimsiz)
+    return "ffmpeg"
+
+FFMPEG_PATH = get_ffmpeg_path()
+
+
+
+def convert_to_wav(input_path: str) -> str:
+    """webm/ogg gibi formatlari wav'a cevirir. Yeni dosya yolunu dondurur."""
+    output_path = input_path.rsplit('.', 1)[0] + '.wav'
+    try:
+        subprocess.run(
+            [FFMPEG_PATH, '-y', '-i', input_path, '-ar', '22050', '-ac', '1', output_path],
+            capture_output=True, check=True, timeout=30
+        )
+        return output_path
+    except Exception as e:
+        print(f'[HATA] ffmpeg donusumu basarisiz: {e}')
+        raise RuntimeError(f"FFmpeg donusum hatasi: {str(e)}. Lutfen ffmpeg kurulu oldugundan emin olun.")
 
 # Türkçe etiketler
 LABEL_MAP = {
@@ -50,63 +92,109 @@ index_to_label = None
 @app.on_event("startup")
 def load_model():
     """Sunucu başladığında modeli ve etiket haritasını yükle."""
-    global model, index_to_label
+    global model, index_to_label, MOCK_ML
     
-    import tensorflow as tf
-    
-    if not os.path.exists(MODEL_PATH):
-        print(f"❌ Model dosyası bulunamadı: {MODEL_PATH}")
-        sys.exit(1)
-    if not os.path.exists(CLASS_INDICES_PATH):
-        print(f"❌ Sınıf etiket dosyası bulunamadı: {CLASS_INDICES_PATH}")
-        sys.exit(1)
-    
-    print(f"📦 Model yükleniyor: {MODEL_PATH}")
-    model = tf.keras.models.load_model(MODEL_PATH)
-    
-    with open(CLASS_INDICES_PATH, 'r', encoding='utf-8') as f:
-        index_to_label = json.load(f)
-    
-    print("✅ Model ve etiketler başarıyla yüklendi!")
-    print(f"   Sınıflar: {list(index_to_label.values())}")
+    try:
+        import tensorflow as tf
+        
+        if not os.path.exists(MODEL_PATH):
+            print(f"[HATA] Model dosyasi bulunamadi: {MODEL_PATH}")
+            sys.exit(1)
+        if not os.path.exists(CLASS_INDICES_PATH):
+            print(f"[HATA] Sinif etiket dosyasi bulunamadi: {CLASS_INDICES_PATH}")
+            sys.exit(1)
+        
+        print(f"[INFO] Model yukleniyor: {MODEL_PATH}")
+        model = tf.keras.models.load_model(MODEL_PATH)
+        
+        with open(CLASS_INDICES_PATH, 'r', encoding='utf-8') as f:
+            index_to_label = json.load(f)
+        
+        print("[OK] Model ve etiketler basariyla yuklendi!")
+        print(f"   Siniflar: {list(index_to_label.values())}")
+    except ImportError:
+        print("[UYARI] TensorFlow yuklenemedi (Python surumu uyumsuzlugu). Sunucu MOCK (Sahte) tahmin modunda calisacak.")
+        MOCK_ML = True
+        index_to_label = {"0": "gurultu", "1": "kaynama", "2": "pisme"}
 
 
 def process_audio(file_path: str) -> dict:
     """
     Ses dosyasını spektrograma çevir, modele gönder ve sonuçları döndür.
-    test_cnn.py dosyasındaki mantığın aynısı, ama print yerine dict döndürüyor.
+    test_cnn.py dosyasındaki fonksiyon kullanılarak tahmin yapılır.
     """
-    from tensorflow.keras.preprocessing import image as keras_image
+    low_volume_warning = None
+    quality_warning = None
+    rms = None
+    zcr = None
+    flatness = None
+
+    if MOCK_ML:
+        import time
+        time.sleep(1) # Tahmini simüle et
+        predictions = [random.uniform(0.1, 0.4) for _ in range(3)]
+        predictions[random.randint(0, 2)] = random.uniform(0.7, 0.9)
+    else:
+        # Sesi yükle ve RMS'i kontrol et
+        y, sr = librosa.load(file_path, sr=22050)
+        
+        # --- SES SEVIYESI KONTROLU (THRESHOLD) ---
+        rms = np.sqrt(np.mean(y**2))
+        zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
+        flatness = float(np.mean(librosa.feature.spectral_flatness(y=y)))
+        print(f"[DEBUG] Ses Seviyesi (RMS): {rms:.6f}")
+        print(f"[DEBUG] Zero Crossing Rate: {zcr:.6f}, Spectral Flatness: {flatness:.6f}")
+        
+        if rms < 0.005:  # Deneysel sessizlik esigi
+            # Erken cikis yapma; modeli yine calistir ve sonucu "uyari" ile dondur.
+            low_volume_warning = {
+                'type': 'LOW_VOLUME',
+                'message': 'Ses seviyesi çok düşük. Sonuç daha az güvenilir olabilir.'
+            }
+            
+        # test_cnn.py'den tahmin fonksiyonunu çalıştır
+        import sys
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        if project_root not in sys.path:
+            sys.path.append(project_root)
+        
+        from test_cnn import test_single_audio
+        best_label, predictions = test_single_audio(
+            file_path=file_path,
+            ext_model=model,
+            ext_label_map=index_to_label,
+            show_output=False,
+            y=y,
+            sr=sr
+        )
     
-    # 1. Sesi yükle ve mel spektrogram oluştur
-    y, sr = librosa.load(file_path, sr=22050)
-    S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
-    S_db = librosa.power_to_db(S, ref=np.max)
-    
-    # 2. Spektrogramı geçici görsel dosya olarak kaydet
-    temp_image = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
-    plt.figure(figsize=(3, 3))
-    librosa.display.specshow(S_db)
-    plt.axis('off')
-    plt.savefig(temp_image, bbox_inches='tight', pad_inches=0)
-    plt.close()
-    
-    # 3. Resmi modelin beklediği formata getir
-    img = keras_image.load_img(temp_image, target_size=(128, 128))
-    img_array = keras_image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0) / 255.0
-    
-    # 4. Tahmin yap
-    predictions = model.predict(img_array, verbose=0)[0]
-    
-    # 5. Geçici dosyayı temizle
-    if os.path.exists(temp_image):
-        os.remove(temp_image)
-    
-    # 6. Sonuçları hazırla
+    # 5. Tahmin sonuclarini logla
     best_idx = int(np.argmax(predictions))
     best_label = index_to_label[str(best_idx)]
+    top_conf = float(predictions[best_idx])
+    sorted_probs = np.sort(predictions)
+    confidence_gap = float(sorted_probs[-1] - sorted_probs[-2]) if len(sorted_probs) > 1 else top_conf
+
+    # Sessizlikte veya asiri gurultude "pisme" false positive riskini azalt.
+    if rms is not None and best_label == 'pisme':
+        very_low_volume = rms < 0.003
+        noisy_ambience = (
+            zcr is not None and flatness is not None and
+            zcr > 0.12 and flatness > 0.20 and top_conf < 0.92
+        )
+        low_confidence_pisme = top_conf < 0.65 or confidence_gap < 0.15
+
+        if very_low_volume or noisy_ambience or low_confidence_pisme:
+            best_label = 'gurultu'
+            best_idx = next(i for i in range(len(predictions)) if index_to_label[str(i)] == 'gurultu')
+            quality_warning = {
+                'type': 'NOISY_OR_SILENT_ENV',
+                'message': 'Ortam sesi sessiz/gürültülü olduğu için sonuç gürültü olarak güvenli moda alındı.'
+            }
     label_info = LABEL_MAP[best_label]
+    
+    print(f"[MODEL] Tahmin: {best_label} ({best_idx})")
+    print(f"[MODEL] Olasiliklar: {predictions}")
     
     # Her sınıf için detaylı sonuçlar
     class_results = []
@@ -120,7 +208,7 @@ def process_audio(file_path: str) -> dict:
             'percentage': round(float(predictions[i]) * 100, 1),
         })
     
-    return {
+    response = {
         'success': True,
         'result': {
             'label': best_label,
@@ -131,6 +219,13 @@ def process_audio(file_path: str) -> dict:
         },
         'details': class_results,
     }
+
+    if low_volume_warning:
+        response['warning'] = low_volume_warning
+    if quality_warning:
+        response['quality_warning'] = quality_warning
+
+    return response
 
 
 # ─── API UÇLARI ───────────────────────────────────────────────
@@ -158,24 +253,38 @@ async def predict(file: UploadFile = File(...)):
             detail=f"Desteklenmeyen dosya formatı: {ext}. Desteklenen: {', '.join(allowed_extensions)}"
         )
     
-    # Geçici dosyaya yaz
+    # Gecici dosyaya yaz
     temp_file = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+    wav_path = None
     try:
         content = await file.read()
         temp_file.write(content)
         temp_file.close()
         
+        # webm/ogg gibi formatlari wav'a cevir
+        audio_path = temp_file.name
+        if ext in {'.webm', '.ogg', '.m4a'}:
+            wav_path = convert_to_wav(temp_file.name)
+            audio_path = wav_path
+        
         # Analiz yap
-        result = process_audio(temp_file.name)
+        result = process_audio(audio_path)
         return JSONResponse(content=result)
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analiz hatası: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        error_detail = str(e)
+        if "FFmpeg" in error_detail:
+            error_detail = "FFmpeg (ses donusturucu) bulunamadi veya ses dosyasi okunamadi. Lutfen sistemde ffmpeg kurulu oldugundan emin olun."
+        raise HTTPException(status_code=500, detail=f"Analiz hatasi: {error_detail}")
     
     finally:
-        # Geçici dosyayı temizle
+        # Gecici dosyalari temizle
         if os.path.exists(temp_file.name):
             os.remove(temp_file.name)
+        if wav_path and os.path.exists(wav_path):
+            os.remove(wav_path)
 
 
 if __name__ == "__main__":

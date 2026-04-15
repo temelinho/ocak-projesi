@@ -49,7 +49,6 @@ model.summary()
 print("\n🚀 Eğitim başlıyor...")
 history = model.fit(train_gen, epochs=20, validation_data=val_gen)
 
-# --- DÜZELTİLEN KISIM ---
 model.save('ocak_siniflandirici.keras')
 print("\n📦 Model 'ocak_siniflandirici.keras' olarak kaydedildi!")
 

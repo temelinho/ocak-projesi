@@ -1,18 +1,56 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="tr">
-
 <head>
-  <meta charset="UTF-8" />
-  <link rel="icon"
-    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🍳</text></svg>" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Yapay zeka destekli ocak ses analiz sistemi - Mutfak seslerinizi analiz edin" />
-  <title>Ocak Ses Analizi</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ocak AI - Akıllı Ses Analizi</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
-</body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+    
+    <main class="glass-container">
+        <header>
+            <div class="logo-icon">🍳</div>
+            <h1>Ocak <span>AI</span></h1>
+            <p>Ocakta ne olduğunu sesten analiz edin</p>
+        </header>
 
+        <section class="upload-section" id="drop-zone">
+            <input type="file" id="audio-input" accept="audio/*" hidden>
+            <div class="upload-content">
+                <span class="upload-icon">🎧</span>
+                <h2>Sesi Buraya Bırakın</h2>
+                <p>veya seçmek için tıklayın (WAV, MP3, OGG, M4A)</p>
+            </div>
+        </section>
+
+        <section class="loading-state hidden" id="loading-state">
+            <div class="spinner"></div>
+            <p>Yapay Zeka Analiz Ediyor...</p>
+        </section>
+
+        <section class="result-section hidden" id="result-section">
+            <div class="main-result">
+                <span class="result-emoji" id="res-emoji">❓</span>
+                <h2 id="res-title">Sonuç Bekleniyor</h2>
+                <p id="res-desc">Lütfen bir ses dosyası yükleyin.</p>
+            </div>
+
+            <div class="details-list" id="details-list">
+                <!-- Bars dynamically inserted -->
+            </div>
+            
+            <button class="btn-reset" id="btn-reset">Yeni Test Yap</button>
+        </section>
+        
+        <div class="error-toast hidden" id="error-toast"></div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
 </html>
